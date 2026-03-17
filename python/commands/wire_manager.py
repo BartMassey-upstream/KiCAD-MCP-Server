@@ -101,6 +101,29 @@ class WireManager:
             return False
 
     @staticmethod
+    def _make_wire_sexp(
+        start: List[float],
+        end: List[float],
+        stroke_width: float = 0,
+        stroke_type: str = "default",
+    ) -> list:
+        """Build a single 2-point wire S-expression."""
+        return [
+            Symbol("wire"),
+            [
+                Symbol("pts"),
+                [Symbol("xy"), start[0], start[1]],
+                [Symbol("xy"), end[0], end[1]],
+            ],
+            [
+                Symbol("stroke"),
+                [Symbol("width"), stroke_width],
+                [Symbol("type"), Symbol(stroke_type)],
+            ],
+            [Symbol("uuid"), str(uuid.uuid4())],
+        ]
+
+    @staticmethod
     def add_polyline_wire(
         schematic_path: Path,
         points: List[List[float]],
@@ -130,21 +153,13 @@ class WireManager:
 
             sch_data = sexpdata.loads(sch_content)
 
-            # Create pts list
-            pts_list = [Symbol("pts")]
-            for point in points:
-                pts_list.append([Symbol("xy"), point[0], point[1]])
-
-            # Create wire S-expression with multiple points
-            wire_sexp = [
-                Symbol("wire"),
-                pts_list,
-                [
-                    Symbol("stroke"),
-                    [Symbol("width"), stroke_width],
-                    [Symbol("type"), Symbol(stroke_type)],
-                ],
-                [Symbol("uuid"), str(uuid.uuid4())],
+            # KiCAD wire elements only support exactly 2 pts each.
+            # Split N waypoints into N-1 individual wire segments.
+            wire_sexps = [
+                WireManager._make_wire_sexp(
+                    points[i], points[i + 1], stroke_width, stroke_type
+                )
+                for i in range(len(points) - 1)
             ]
 
             # Find insertion point
@@ -162,9 +177,12 @@ class WireManager:
                 logger.error("No sheet_instances section found in schematic")
                 return False
 
-            # Insert wire
-            sch_data.insert(sheet_instances_index, wire_sexp)
-            logger.info(f"Injected polyline wire with {len(points)} points")
+            # Insert all segments (in reverse so order is preserved after inserts)
+            for wire_sexp in reversed(wire_sexps):
+                sch_data.insert(sheet_instances_index, wire_sexp)
+            logger.info(
+                f"Injected {len(wire_sexps)} wire segments for {len(points)}-point polyline"
+            )
 
             # Write back
             with open(schematic_path, "w", encoding="utf-8") as f:

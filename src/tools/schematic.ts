@@ -233,33 +233,55 @@ Note: operates on .kicad_sch files only. To modify a PCB footprint use edit_comp
     },
   );
 
-  // Connect components with wire
+  // Draw wire between schematic points
   server.tool(
-    "add_wire",
-    "Add a wire connection in the schematic",
+    "add_schematic_wire",
+    "Draw a wire on the schematic between two or more coordinate points. Always call get_schematic_pin_locations first to get the approximate pin coordinates, then pass them as the first and last waypoints. snapToPins (on by default) will correct any float imprecision by snapping endpoints to the exact nearest pin coordinate. To route around components, add intermediate waypoints between the start and end: e.g. [[x1,y1], [xMid,y1], [xMid,y2], [x2,y2]] routes horizontally then vertically. Intermediate waypoints are never snapped.",
     {
-      start: z
-        .object({
-          x: z.number(),
-          y: z.number(),
-        })
-        .describe("Start position"),
-      end: z
-        .object({
-          x: z.number(),
-          y: z.number(),
-        })
-        .describe("End position"),
+      schematicPath: z.string().describe("Path to the schematic file"),
+      waypoints: z
+        .array(z.tuple([z.number(), z.number()]))
+        .min(2)
+        .describe(
+          "Array of [x, y] coordinates defining the wire path. First and last points are the pin locations (from get_schematic_pin_locations). Add intermediate points to route around obstacles.",
+        ),
+      snapToPins: z
+        .boolean()
+        .optional()
+        .describe(
+          "When true, the first and last waypoints are snapped to the nearest schematic pin within snapTolerance mm. Enabled by default to correct float coordinate imprecision.",
+        ),
+      snapTolerance: z
+        .number()
+        .optional()
+        .describe(
+          "Maximum distance in mm to search for a nearby pin when snapToPins is enabled. Default: 1.0",
+        ),
     },
-    async (args: any) => {
-      const result = await callKicadScript("add_wire", args);
+    async (args) => {
+      const result = await callKicadScript("add_schematic_wire", args);
       return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      };
+    },
+  );
+
+  // Add junction (connection dot) at a wire intersection
+  server.tool(
+    "add_schematic_junction",
+    "Add a junction (connection dot) at the specified coordinates on the schematic. Junctions are required in KiCAD to mark intentional connections where wires cross or where a wire branches off another wire. Without a junction, crossing wires are not electrically connected.",
+    {
+      schematicPath: z.string().describe("Path to the schematic file"),
+      position: z
+        .tuple([z.number(), z.number()])
+        .describe(
+          "The [x, y] coordinates where the junction should be placed. Must be on an existing wire intersection or branch point.",
+        ),
+    },
+    async (args) => {
+      const result = await callKicadScript("add_schematic_junction", args);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
     },
   );
