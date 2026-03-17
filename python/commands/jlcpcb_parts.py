@@ -162,7 +162,7 @@ class JLCPCBPartsManager:
         else:
             return 'Extended'  # Default to Extended
 
-    def import_jlcsearch_parts(self, parts: List[Dict], progress_callback=None):
+    def import_jlcsearch_parts(self, parts: List[Dict], progress_callback=None, rebuild_fts=True):
         """
         Import parts into database from JLCSearch API response
 
@@ -238,11 +238,12 @@ class JLCPCBPartsManager:
                 logger.error(f"Error importing part {part.get('lcsc')}: {e}")
                 skipped += 1
 
-        # Update FTS index
-        cursor.execute('''
-            INSERT INTO components_fts(components_fts)
-            VALUES('rebuild')
-        ''')
+        # Update FTS index (skip when caller will do a bulk rebuild)
+        if rebuild_fts:
+            cursor.execute('''
+                INSERT INTO components_fts(components_fts)
+                VALUES('rebuild')
+            ''')
 
         self.conn.commit()
         logger.info(f"Import complete: {imported} parts imported, {skipped} skipped")
